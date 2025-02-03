@@ -57,9 +57,11 @@ instance FromJSON LlamaResponse where
   parseJSON = withObject "LlamaResponse" $ \v -> LlamaResponse
     <$> v .: "content"
 
-applyTemplate :: Manager -> LlamaApplyTemplateRequest -> IO (Maybe Text)
-applyTemplate manager input = do
-  let request = parseRequest_ "http://localhost:8080/apply-template"
+type URL = String
+
+applyTemplate :: URL -> Manager -> LlamaApplyTemplateRequest -> IO (Maybe Text)
+applyTemplate url manager input = do
+  let request = parseRequest_ $ url ++ "/apply-template"
       body = encode input
       req = request { method = "POST"
                     , requestBody = RequestBodyLBS body
@@ -73,9 +75,9 @@ applyTemplate manager input = do
       return Nothing
 
 -- Function to send a message to the Llama model
-sendToLlama :: Manager -> Text -> IO (Maybe Text)
-sendToLlama manager input = do
-  let request = parseRequest_ "http://localhost:8080/completion"
+sendToLlama :: URL -> Manager -> Text -> IO (Maybe Text)
+sendToLlama url manager input = do
+  let request = parseRequest_ $ url ++ "/completion"
       body = encode (LlamaRequest input)
       req = request { method = "POST"
                     , requestBody = RequestBodyLBS body
@@ -88,15 +90,15 @@ sendToLlama manager input = do
       liftIO $ hPutStrLn stderr "Failed to decode Llama response"
       return Nothing
 
-llama :: Text -> IO (Maybe Text)
-llama input = do
+llama :: URL -> Text -> IO (Maybe Text)
+llama url input = do
   manager <- liftIO $ newManager tlsManagerSettings { managerResponseTimeout = responseTimeoutNone }
-  sendToLlama manager input
+  sendToLlama url manager input
 
-llamaTemplated :: LlamaApplyTemplateRequest -> IO (Maybe Text)
-llamaTemplated input = do
+llamaTemplated :: URL -> LlamaApplyTemplateRequest -> IO (Maybe Text)
+llamaTemplated url input = do
   manager <- liftIO $ newManager tlsManagerSettings { managerResponseTimeout = responseTimeoutNone }
-  res <- applyTemplate manager input
+  res <- applyTemplate url manager input
   case res of
-    Just text -> sendToLlama manager text
+    Just text -> sendToLlama url manager text
     _ -> pure Nothing
