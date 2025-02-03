@@ -27,7 +27,7 @@ instance ToJSON LlamaMessage where
       , "content" .= content m
       ]
 
-data LlamaApplyTemplateRequest = LlamaApplyTemplateRequest
+newtype LlamaApplyTemplateRequest = LlamaApplyTemplateRequest
   { messages :: [LlamaMessage]
   } deriving (Show, Generic)
 instance ToJSON LlamaApplyTemplateRequest
@@ -37,7 +37,7 @@ instance ToJSON LlamaApplyTemplateRequest
 --  } deriving (Show)
 
 -- Llama request and response
-data LlamaRequest = LlamaRequest
+newtype LlamaRequest = LlamaRequest
   { prompt :: Text
   } deriving (Show)
 
@@ -49,7 +49,7 @@ instance ToJSON LlamaRequest where
   toJSON (LlamaRequest p) =
     object ["prompt" .= p]
 
-data LlamaResponse = LlamaResponse
+newtype LlamaResponse = LlamaResponse
   { generatedText :: Text
   } deriving (Show)
 
