@@ -29,7 +29,7 @@ library
     exposed-modules:  Llama
     -- other-modules:
     -- other-extensions:
-    build-depends:    base ^>=4.19.2.0
+    build-depends:    base >= 4 && < 5
                     , http-conduit ^>= 2.3
                     , aeson ^>= 2.2
                     , text ^>= 2.1
