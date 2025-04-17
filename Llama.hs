@@ -7,6 +7,7 @@ import Data.Aeson
 import Data.Text (Text)
 import GHC.Generics
 import Network.HTTP.Conduit
+import Network.HTTP.Types.Status
 import System.IO (hPutStrLn, stderr)
 
 data Role = System | User | CustomRole Text deriving Show
@@ -31,6 +32,8 @@ newtype LlamaApplyTemplateRequest = LlamaApplyTemplateRequest
   { messages :: [LlamaMessage]
   } deriving (Show, Generic)
 instance ToJSON LlamaApplyTemplateRequest
+
+data Health = HealthOk | HealthNok deriving (Show)
 
 --data LlamaApplyTemplateResponse = LlamaApplyTemplateResponse
 --  { prompt :: Text
@@ -102,3 +105,12 @@ llamaTemplated url input = do
   case res of
     Just text -> sendToLlama url manager text
     _ -> pure Nothing
+
+health :: URL -> IO Health
+health url = do
+  manager <- liftIO $ newManager tlsManagerSettings { managerResponseTimeout = responseTimeoutNone }
+  let request = parseRequest_ $ url ++ "/health"
+  response <- httpLbs request manager
+  pure $ if responseStatus response == ok200
+       then HealthOk
+       else HealthNok
