@@ -10,6 +10,7 @@ maintainer:         l29ah@riseup.net
 -- copyright:
 category:           Text
 build-type:         Simple
+tested-with:        GHC == 9.12.2
 -- extra-source-files:
 
 Source-repository head
