@@ -19,7 +19,8 @@ data Options w = Options
   , url :: w ::: String <?> "llama-server URL" <!> "http://localhost:8080"
   } deriving (Generic)
 
-instance ParseRecord (Options Wrapped)
+instance ParseRecord (Options Wrapped) where
+  parseRecord = parseRecordWithModifiers lispCaseModifiers
 deriving instance Show (Options Unwrapped)
 
 main :: IO ()
