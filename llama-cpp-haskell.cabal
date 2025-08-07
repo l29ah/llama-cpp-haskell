@@ -1,6 +1,6 @@
 cabal-version:      2.2
 name:               llama-cpp-haskell
-version:            0.1.0.2
+version:            0.1.1
 synopsis:           Haskell bindings for the llama.cpp llama-server and a simple CLI
 -- description:
 license:            AGPL-3.0-only
@@ -20,7 +20,7 @@ Source-repository head
 Source-repository this
   type:              git
   location:          https://github.com/l29ah/llama-cpp-haskell.git
-  tag:               0.1.0.2
+  tag:               0.1.1
 
 common stuff
     ghc-options: -Wall
