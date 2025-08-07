@@ -7,16 +7,20 @@
 
 module Main where
 
+import Conduit
+import Data.Conduit.Lazy
 import qualified Data.Text.IO as T
 import Options.Generic
 import System.Exit
 import System.IO
 
 import Llama
+import Llama.Streaming as LS
 
 data Options w = Options
   { systemPrompt :: w ::: Text <?> "The system prompt to use" <!> "You are a helpful assistant."
   , url :: w ::: String <?> "llama-server URL" <!> "http://localhost:8080"
+  , streaming :: w ::: Bool <?> "use to stream output from the LLM"
   } deriving (Generic)
 
 instance ParseRecord (Options Wrapped) where
@@ -30,7 +34,16 @@ main = do
   let request = [ LlamaMessage System $ systemPrompt opts
                 , LlamaMessage User input
                 ]
-  response <- llamaTemplated (url opts) (LlamaApplyTemplateRequest request)
-  case response of
-    Nothing -> T.hPutStrLn stderr "Got no response from the server." >> exitFailure
-    Just r -> T.putStrLn r
+  case streaming opts of
+    False -> do
+      response <- llamaTemplated (url opts) (LlamaApplyTemplateRequest request)
+      case response of
+        Nothing -> T.hPutStrLn stderr "Got no response from the server." >> exitFailure
+        Just r -> T.putStrLn r
+    True -> do
+      hSetBuffering stdout NoBuffering
+      conduit <- llamaTemplatedStreaming (url opts) (LlamaApplyTemplateRequest request)
+      runResourceT $ do
+        list <- lazyConsume conduit
+        liftIO $ mapM_ (T.putStr . LS.content) $ list
+      T.putStrLn ""

@@ -1,14 +1,17 @@
-{-# LANGUAGE OverloadedStrings, DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings, DeriveGeneric, DuplicateRecordFields #-}
 
 module Llama where
 
-import Control.Monad.IO.Class (liftIO)
+import Conduit
 import Data.Aeson
 import Data.Text (Text)
 import GHC.Generics
 import Network.HTTP.Conduit
+import Network.HTTP.Simple hiding (httpLbs)
 import Network.HTTP.Types.Status
 import System.IO (hPutStrLn, stderr)
+
+import Llama.Streaming
 
 data Role = System | User | CustomRole Text deriving Show
 instance ToJSON Role where
@@ -25,7 +28,7 @@ instance ToJSON LlamaMessage where
   toJSON m =
     object
       [ "role" .= role m
-      , "content" .= content m
+      , "content" .= Llama.content m
       ]
 
 newtype LlamaApplyTemplateRequest = LlamaApplyTemplateRequest
@@ -33,24 +36,30 @@ newtype LlamaApplyTemplateRequest = LlamaApplyTemplateRequest
   } deriving (Show, Generic)
 instance ToJSON LlamaApplyTemplateRequest
 
+newtype LlamaApplyTemplateResponse = LlamaApplyTemplateResponse
+  { prompt :: Text
+  } deriving (Show, Generic)
+
+instance FromJSON LlamaApplyTemplateResponse where
+  parseJSON = withObject "LlamaApplyTemplateResponse" $ \v -> LlamaApplyTemplateResponse
+    <$> v .: "prompt"
+
 data Health = HealthOk | HealthNok deriving (Show)
 
---data LlamaApplyTemplateResponse = LlamaApplyTemplateResponse
---  { prompt :: Text
---  } deriving (Show)
-
 -- Llama request and response
-newtype LlamaRequest = LlamaRequest
+data LlamaRequest = LlamaRequest
   { prompt :: Text
+  , stream :: Bool
   } deriving (Show)
 
 instance FromJSON LlamaRequest where
   parseJSON = withObject "LlamaRequest" $ \v -> LlamaRequest
     <$> v .: "prompt"
+    <*> v .: "stream"
 
 instance ToJSON LlamaRequest where
-  toJSON (LlamaRequest p) =
-    object ["prompt" .= p]
+  toJSON (LlamaRequest p s) =
+    object ["prompt" .= p, "stream" .= s]
 
 newtype LlamaResponse = LlamaResponse
   { generatedText :: Text
@@ -72,7 +81,7 @@ applyTemplate url manager input = do
                     }
   response <- httpLbs req manager
   case decode (responseBody response) of
-    Just (LlamaRequest text) -> return (Just text)
+    Just (LlamaApplyTemplateResponse text) -> return (Just text)
     Nothing -> do
       liftIO $ hPutStrLn stderr "Failed to decode Llama response"
       return Nothing
@@ -81,7 +90,7 @@ applyTemplate url manager input = do
 sendToLlama :: URL -> Manager -> Text -> IO (Maybe Text)
 sendToLlama url manager input = do
   let request = parseRequest_ $ url ++ "/completion"
-      body = encode (LlamaRequest input)
+      body = encode (LlamaRequest input False)
       req = request { method = "POST"
                     , requestBody = RequestBodyLBS body
                     , requestHeaders = [("Content-Type", "application/json")]
@@ -92,6 +101,16 @@ sendToLlama url manager input = do
     Nothing -> do
       liftIO $ hPutStrLn stderr "Failed to decode Llama response"
       return Nothing
+
+sendToLlamaStreaming :: (MonadThrow m, MonadResource m) => URL -> Manager -> Text -> IO (ConduitT () LlamaStreamingResponse m ())
+sendToLlamaStreaming url manager input = do
+  let request = setRequestManager manager $ parseRequest_ $ url ++ "/completion"
+      body = encode (LlamaRequest input True)
+      req = request { method = "POST"
+                    , requestBody = RequestBodyLBS body
+                    , requestHeaders = [("Content-Type", "application/json")]
+                    }
+  pure $ httpSource req getResponseBody .| eventConduit
 
 llama :: URL -> Text -> IO (Maybe Text)
 llama url input = do
@@ -105,6 +124,14 @@ llamaTemplated url input = do
   case res of
     Just text -> sendToLlama url manager text
     _ -> pure Nothing
+
+llamaTemplatedStreaming :: (MonadThrow m, MonadResource m) => URL -> LlamaApplyTemplateRequest -> IO (ConduitT () LlamaStreamingResponse m ())
+llamaTemplatedStreaming url input = do
+  manager <- liftIO $ newManager tlsManagerSettings { managerResponseTimeout = responseTimeoutNone }
+  res <- applyTemplate url manager input
+  case res of
+    Just text -> sendToLlamaStreaming url manager text
+    _ -> pure $ yieldMany []
 
 health :: URL -> IO Health
 health url = do
