@@ -17,7 +17,7 @@ import Llama.Streaming
 data Role = System | User | CustomRole Text deriving Show
 instance ToJSON Role where
   toJSON System = "system"
-  toJSON User = "system"
+  toJSON User = "user"
   toJSON (CustomRole t) = String t
 
 data LlamaMessage = LlamaMessage
