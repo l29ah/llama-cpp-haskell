@@ -8,7 +8,7 @@ license-file:       LICENSE
 author:             Sergey Alirzaev
 maintainer:         l29ah@riseup.net
 -- copyright:
-category:           Text
+category:           Text, LLM, Llama, Machine Learning, AI, Network, CLI
 build-type:         Simple
 tested-with:        GHC == 9.12.2
 -- extra-source-files:
