@@ -34,10 +34,7 @@ instance ToJSON LlamaApplyTemplateRequest
 newtype LlamaApplyTemplateResponse = LlamaApplyTemplateResponse
   { prompt :: Text
   } deriving (Show, Generic)
-
-instance FromJSON LlamaApplyTemplateResponse where
-  parseJSON = withObject "LlamaApplyTemplateResponse" $ \v -> LlamaApplyTemplateResponse
-    <$> v .: "prompt"
+instance FromJSON LlamaApplyTemplateResponse
 
 newtype LlamaDetokenizeRequest = LlamaDetokenizeRequest
   { tokens :: [Token]
@@ -55,24 +52,13 @@ data Health = HealthOk | HealthNok deriving (Show)
 data LlamaRequest = LlamaRequest
   { prompt :: Text
   , stream :: Bool
-  } deriving (Show)
-
-instance FromJSON LlamaRequest where
-  parseJSON = withObject "LlamaRequest" $ \v -> LlamaRequest
-    <$> v .: "prompt"
-    <*> v .: "stream"
-
-instance ToJSON LlamaRequest where
-  toJSON (LlamaRequest p s) =
-    object ["prompt" .= p, "stream" .= s]
+  } deriving (Show, Generic)
+instance ToJSON LlamaRequest
 
 newtype LlamaResponse = LlamaResponse
-  { generatedText :: Text
-  } deriving (Show)
-
-instance FromJSON LlamaResponse where
-  parseJSON = withObject "LlamaResponse" $ \v -> LlamaResponse
-    <$> v .: "content"
+  { content :: Text
+  } deriving (Show, Generic)
+instance FromJSON LlamaResponse
 
 type Token = Word32
 type URL = String
