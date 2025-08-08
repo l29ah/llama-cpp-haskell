@@ -5,6 +5,7 @@ module Llama where
 import Conduit
 import Data.Aeson
 import Data.Text (Text)
+import Data.Word
 import GHC.Generics
 import Network.HTTP.Conduit
 import Network.HTTP.Simple hiding (httpLbs)
@@ -22,14 +23,8 @@ instance ToJSON Role where
 data LlamaMessage = LlamaMessage
   { role :: Role
   , content :: Text
-  } deriving (Show)
-
-instance ToJSON LlamaMessage where
-  toJSON m =
-    object
-      [ "role" .= role m
-      , "content" .= Llama.content m
-      ]
+  } deriving (Show, Generic)
+instance ToJSON LlamaMessage
 
 newtype LlamaApplyTemplateRequest = LlamaApplyTemplateRequest
   { messages :: [LlamaMessage]
@@ -43,6 +38,16 @@ newtype LlamaApplyTemplateResponse = LlamaApplyTemplateResponse
 instance FromJSON LlamaApplyTemplateResponse where
   parseJSON = withObject "LlamaApplyTemplateResponse" $ \v -> LlamaApplyTemplateResponse
     <$> v .: "prompt"
+
+newtype LlamaDetokenizeRequest = LlamaDetokenizeRequest
+  { tokens :: [Token]
+  } deriving (Show, Generic)
+instance ToJSON LlamaDetokenizeRequest
+
+newtype LlamaDetokenizeResponse = LlamaDetokenizeResponse
+  { content :: Text
+  } deriving (Show, Generic)
+instance FromJSON LlamaDetokenizeResponse
 
 data Health = HealthOk | HealthNok deriving (Show)
 
@@ -69,6 +74,7 @@ instance FromJSON LlamaResponse where
   parseJSON = withObject "LlamaResponse" $ \v -> LlamaResponse
     <$> v .: "content"
 
+type Token = Word32
 type URL = String
 
 applyTemplate :: URL -> Manager -> LlamaApplyTemplateRequest -> IO (Maybe Text)
@@ -111,6 +117,21 @@ sendToLlamaStreaming url manager input = do
                     , requestHeaders = [("Content-Type", "application/json")]
                     }
   pure $ httpSource req getResponseBody .| eventConduit
+
+detokenize :: URL -> [Token] -> IO (Maybe Text)
+detokenize url input = do
+  let request = parseRequest_ $ url ++ "/detokenize"
+      body = encode $ LlamaDetokenizeRequest input
+      req = request { method = "POST"
+                    , requestBody = RequestBodyLBS body
+                    , requestHeaders = [("Content-Type", "application/json")]
+                    }
+  response <- httpLBS req
+  case decode (responseBody response) of
+    Just (LlamaDetokenizeResponse text) -> return (Just text)
+    Nothing -> do
+      liftIO $ hPutStrLn stderr "Failed to decode Llama response"
+      return Nothing
 
 llama :: URL -> Text -> IO (Maybe Text)
 llama url input = do
