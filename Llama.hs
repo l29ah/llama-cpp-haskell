@@ -36,6 +36,18 @@ newtype LlamaApplyTemplateResponse = LlamaApplyTemplateResponse
   } deriving (Show, Generic)
 instance FromJSON LlamaApplyTemplateResponse
 
+data LlamaTokenizeRequest = LlamaTokenizeRequest
+  { content :: Text
+  , add_special :: Bool
+  , parse_special :: Bool
+  } deriving (Show, Generic)
+instance ToJSON LlamaTokenizeRequest
+
+newtype LlamaTokenizeResponse = LlamaTokenizeResponse
+  { tokens :: [Token]
+  } deriving (Show, Generic)
+instance FromJSON LlamaTokenizeResponse
+
 newtype LlamaDetokenizeRequest = LlamaDetokenizeRequest
   { tokens :: [Token]
   } deriving (Show, Generic)
@@ -103,6 +115,20 @@ sendToLlamaStreaming url manager input = do
                     , requestHeaders = [("Content-Type", "application/json")]
                     }
   pure $ httpSource req getResponseBody .| eventConduit
+
+tokenize :: URL -> LlamaTokenizeRequest -> IO (Maybe [Token])
+tokenize url input = do
+  let request = parseRequest_ $ url ++ "/tokenize"
+      req = request { method = "POST"
+                    , requestBody = RequestBodyLBS $ encode input
+                    , requestHeaders = [("Content-Type", "application/json")]
+                    }
+  response <- httpLBS req
+  case decode (responseBody response) of
+    Just (LlamaTokenizeResponse result) -> return (Just result)
+    Nothing -> do
+      liftIO $ hPutStrLn stderr "Failed to decode Llama response"
+      return Nothing
 
 detokenize :: URL -> [Token] -> IO (Maybe Text)
 detokenize url input = do
