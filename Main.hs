@@ -22,7 +22,7 @@ data Options w = Options
   { systemPrompt :: w ::: Text <?> "The system prompt to use" <!> "You are a helpful assistant."
   , url :: w ::: String <?> "llama-server URL" <!> "http://localhost:8080"
   , streaming :: w ::: Bool <?> "use to stream output from the LLM"
-  , stripThinking :: w ::: Bool <?> "remove \"</think>\" and everything that occurs before it, only works in non-streaming mode"
+  , stripThinking :: w ::: Bool <?> "remove \"</think>\" and everything that occurs before it"
   } deriving (Generic)
 
 instance ParseRecord (Options Wrapped) where
@@ -47,5 +47,9 @@ main = do
       conduit <- llamaTemplatedStreaming (url opts) (LlamaApplyTemplateRequest request)
       runResourceT $ do
         list <- lazyConsume conduit
-        liftIO $ mapM_ (T.putStr . LS.content) $ list
+        liftIO $ mapM_ T.putStr $ (if stripThinking opts then dropSep "</think>" else id) $ map LS.content list
       T.putStrLn ""
+
+dropSep :: Eq a => a -> [a] -> [a]
+dropSep _ [] = []
+dropSep a (x:xs) = if a == x then xs else dropSep a xs
