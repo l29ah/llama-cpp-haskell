@@ -23,6 +23,7 @@ data Options w = Options
   , url :: w ::: String <?> "llama-server URL" <!> "http://localhost:8080"
   , streaming :: w ::: Bool <?> "use to stream output from the LLM"
   , stripThinking :: w ::: Bool <?> "remove \"</think>\" and everything that occurs before it"
+  , templateOnly :: w ::: Bool <?> "only apply the chat template without running LLM completion"
   } deriving (Generic)
 
 instance ParseRecord (Options Wrapped) where
@@ -36,19 +37,25 @@ main = do
   let request = [ LlamaMessage System $ systemPrompt opts
                 , LlamaMessage User input
                 ]
-  case streaming opts of
-    False -> do
-      response <- llamaTemplated (url opts) (LlamaApplyTemplateRequest request)
-      case response of
-        Nothing -> T.hPutStrLn stderr "Got no response from the server." >> exitFailure
-        Just r -> T.putStrLn $ if stripThinking opts then snd $ T.breakOnEnd "</think>" r else r
-    True -> do
-      hSetBuffering stdout NoBuffering
-      conduit <- llamaTemplatedStreaming (url opts) (LlamaApplyTemplateRequest request)
-      runResourceT $ do
-        list <- lazyConsume conduit
-        liftIO $ mapM_ T.putStr $ (if stripThinking opts then dropSep "</think>" else id) $ map LS.content list
-      T.putStrLn ""
+  if templateOnly opts then do
+    response <- applyTemplateSimple (url opts) (LlamaApplyTemplateRequest request)
+    case response of
+      Nothing -> T.hPutStrLn stderr "Got no response from the server." >> exitFailure
+      Just r -> T.putStrLn $ if stripThinking opts then snd $ T.breakOnEnd "</think>" r else r
+  else
+    case streaming opts of
+      False -> do
+        response <- llamaTemplated (url opts) (LlamaApplyTemplateRequest request)
+        case response of
+          Nothing -> T.hPutStrLn stderr "Got no response from the server." >> exitFailure
+          Just r -> T.putStrLn $ if stripThinking opts then snd $ T.breakOnEnd "</think>" r else r
+      True -> do
+        hSetBuffering stdout NoBuffering
+        conduit <- llamaTemplatedStreaming (url opts) (LlamaApplyTemplateRequest request)
+        runResourceT $ do
+          list <- lazyConsume conduit
+          liftIO $ mapM_ T.putStr $ (if stripThinking opts then dropSep "</think>" else id) $ map LS.content list
+        T.putStrLn ""
 
 dropSep :: Eq a => a -> [a] -> [a]
 dropSep _ [] = []
