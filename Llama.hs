@@ -4,6 +4,7 @@ module Llama where
 
 import Conduit
 import Data.Aeson
+import Data.ByteString.Lazy (ByteString)
 import Data.Text (Text)
 import Data.Word
 import GHC.Generics
@@ -75,15 +76,24 @@ instance FromJSON LlamaResponse
 type Token = Word32
 type URL = String
 
+-- |Apply the LLM tempate to produce a raw LLM prompt from the role-content pairs
+applyTemplateSimple :: URL -> LlamaApplyTemplateRequest -> IO (Maybe Text)
+applyTemplateSimple = applyTemplateGeneral httpLBS
+
+-- |Like `applyTemplateSimple` but with user-supplied `Manager`
 applyTemplate :: URL -> Manager -> LlamaApplyTemplateRequest -> IO (Maybe Text)
-applyTemplate url manager input = do
+applyTemplate url manager = applyTemplateGeneral (`httpLbs` manager) url
+
+-- |Like `applyTemplateSimple` but with user-supplied fetcher
+applyTemplateGeneral :: (ToJSON p) => (Request -> IO (Response ByteString)) -> [Char] -> p -> IO (Maybe Text)
+applyTemplateGeneral fetch url input = do
   let request = parseRequest_ $ url ++ "/apply-template"
       body = encode input
       req = request { method = "POST"
                     , requestBody = RequestBodyLBS body
                     , requestHeaders = [("Content-Type", "application/json")]
                     }
-  response <- httpLbs req manager
+  response <- fetch req
   case decode (responseBody response) of
     Just (LlamaApplyTemplateResponse text) -> return (Just text)
     Nothing -> do
