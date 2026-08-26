@@ -88,8 +88,31 @@ newtype LlamaResponse = LlamaResponse
   } deriving (Show, Generic)
 instance FromJSON LlamaResponse
 
+data LlamaError = LlamaError
+  { code :: Word
+  , message :: Text
+  } deriving (Show, Generic)
+instance FromJSON LlamaError
+
+newtype LlamaResponseError = LlamaResponseError
+  { error :: LlamaError
+  } deriving (Show, Generic)
+instance FromJSON LlamaResponseError
+
 type Token = Word32
 type URL = String
+
+llamaDecode :: (FromJSON a) => ByteString -> IO (Maybe a)
+llamaDecode x =
+  case decode x of
+    Just v -> return v
+    Nothing -> do
+      case decode x of
+        Just (LlamaResponseError err) -> do
+          liftIO $ hPutStrLn stderr $ "llama-server returned an error: " ++ show err
+        Nothing -> do
+          liftIO $ hPutStrLn stderr $ "Failed to decode Llama response, got: " ++ show x
+      return Nothing
 
 -- |Apply the LLM tempate to produce a raw LLM prompt from the role-content pairs
 applyTemplateSimple :: URL -> LlamaApplyTemplateRequest -> IO (Maybe Text)
@@ -109,11 +132,8 @@ applyTemplateGeneral fetch url input = do
                     , requestHeaders = [("Content-Type", "application/json")]
                     }
   response <- fetch req
-  case decode (responseBody response) of
-    Just (LlamaApplyTemplateResponse text) -> return (Just text)
-    Nothing -> do
-      liftIO $ hPutStrLn stderr $ "Failed to decode Llama response, got: " ++ (show $ responseBody response)
-      return Nothing
+  decoded <- llamaDecode (responseBody response)
+  return $ decoded >>= (\(LlamaApplyTemplateResponse text) -> Just text)
 
 -- |Simple completion API
 sendToLlama :: URL -> Manager -> Text -> IO (Maybe Text)
@@ -130,11 +150,8 @@ sendToLlamaRequest url manager lreq = do
                     , responseTimeout = responseTimeoutMicro 1800000000
                     }
   response <- httpLbs req manager
-  case decode (responseBody response) of
-    Just (LlamaResponse text) -> return (Just text)
-    Nothing -> do
-      liftIO $ hPutStrLn stderr $ "Failed to decode Llama response, got: " ++ (show $ responseBody response)
-      return Nothing
+  decoded <- llamaDecode (responseBody response)
+  return $ decoded >>= (\(LlamaResponse text) -> Just text)
 
 -- |Returns a token-by-token stream
 sendToLlamaStreaming :: (MonadThrow m, MonadResource m) => URL -> Manager -> Text -> IO (ConduitT () LlamaStreamingResponse m ())
@@ -159,11 +176,8 @@ tokenize url input = do
                     , requestHeaders = [("Content-Type", "application/json")]
                     }
   response <- httpLBS req
-  case decode (responseBody response) of
-    Just (LlamaTokenizeResponse result) -> return (Just result)
-    Nothing -> do
-      liftIO $ hPutStrLn stderr $ "Failed to decode Llama response, got: " ++ (show $ responseBody response)
-      return Nothing
+  decoded <- llamaDecode (responseBody response)
+  return $ decoded >>= (\(LlamaTokenizeResponse result) -> Just result)
 
 detokenize :: URL -> [Token] -> IO (Maybe Text)
 detokenize url input = do
@@ -174,11 +188,8 @@ detokenize url input = do
                     , requestHeaders = [("Content-Type", "application/json")]
                     }
   response <- httpLBS req
-  case decode (responseBody response) of
-    Just (LlamaDetokenizeResponse text) -> return (Just text)
-    Nothing -> do
-      liftIO $ hPutStrLn stderr $ "Failed to decode Llama response, got: " ++ (show $ responseBody response)
-      return Nothing
+  decoded <- llamaDecode (responseBody response)
+  return $ decoded >>= (\(LlamaDetokenizeResponse result) -> Just result)
 
 -- |Extremely basic interface
 llama :: URL -> Text -> IO (Maybe Text)
