@@ -5,6 +5,7 @@ module Llama where
 import Conduit
 import Data.Aeson
 import Data.ByteString.Lazy (ByteString)
+import Data.Default
 import Data.Text (Text)
 import Data.Word
 import GHC.Generics
@@ -27,8 +28,9 @@ data LlamaMessage = LlamaMessage
   } deriving (Show, Generic)
 instance ToJSON LlamaMessage
 
-newtype LlamaApplyTemplateRequest = LlamaApplyTemplateRequest
+data LlamaApplyTemplateRequest = LlamaApplyTemplateRequest
   { messages :: [LlamaMessage]
+  , model :: Maybe Text
   } deriving (Show, Generic)
 instance ToJSON LlamaApplyTemplateRequest
 
@@ -61,12 +63,25 @@ instance FromJSON LlamaDetokenizeResponse
 
 data Health = HealthOk | HealthNok deriving (Show)
 
+-- llama.cpp rejects requests with null options since https://github.com/ggml-org/llama.cpp/pull/24150
+noMaybes = defaultOptions { omitNothingFields = True }
 -- Llama request and response
 data LlamaRequest = LlamaRequest
   { prompt :: Text
   , stream :: Bool
+  , cache_prompt :: Maybe Bool
+  , model :: Maybe Text
   } deriving (Show, Generic)
-instance ToJSON LlamaRequest
+instance ToJSON LlamaRequest where
+  toJSON = genericToJSON noMaybes
+  toEncoding = genericToEncoding noMaybes
+instance Default LlamaRequest where
+  def = LlamaRequest
+      { prompt = ""
+      , stream = False
+      , cache_prompt = Nothing
+      , model = Nothing
+      }
 
 newtype LlamaResponse = LlamaResponse
   { content :: Text
@@ -100,14 +115,19 @@ applyTemplateGeneral fetch url input = do
       liftIO $ hPutStrLn stderr $ "Failed to decode Llama response, got: " ++ (show $ responseBody response)
       return Nothing
 
--- Function to send a message to the Llama model
+-- |Simple completion API
 sendToLlama :: URL -> Manager -> Text -> IO (Maybe Text)
-sendToLlama url manager input = do
+sendToLlama url manager input = sendToLlamaRequest url manager (def { prompt = input })
+
+-- |Allows to specify other completion options
+sendToLlamaRequest :: URL -> Manager -> LlamaRequest -> IO (Maybe Text)
+sendToLlamaRequest url manager lreq = do
   let request = parseRequest_ $ url ++ "/completion"
-      body = encode (LlamaRequest input False)
+      body = encode lreq
       req = request { method = "POST"
                     , requestBody = RequestBodyLBS body
                     , requestHeaders = [("Content-Type", "application/json")]
+                    , responseTimeout = responseTimeoutMicro 1800000000
                     }
   response <- httpLbs req manager
   case decode (responseBody response) of
@@ -116,10 +136,15 @@ sendToLlama url manager input = do
       liftIO $ hPutStrLn stderr $ "Failed to decode Llama response, got: " ++ (show $ responseBody response)
       return Nothing
 
+-- |Returns a token-by-token stream
 sendToLlamaStreaming :: (MonadThrow m, MonadResource m) => URL -> Manager -> Text -> IO (ConduitT () LlamaStreamingResponse m ())
-sendToLlamaStreaming url manager input = do
+sendToLlamaStreaming url manager input = sendToLlamaStreamingRequest url manager (def { prompt = input })
+
+-- |Allows to specify other completion options
+sendToLlamaStreamingRequest :: (MonadThrow m, MonadResource m) => URL -> Manager -> LlamaRequest -> IO (ConduitT () LlamaStreamingResponse m ())
+sendToLlamaStreamingRequest url manager lreq = do
   let request = setRequestManager manager $ parseRequest_ $ url ++ "/completion"
-      body = encode (LlamaRequest input True)
+      body = encode (lreq { stream = True })
       req = request { method = "POST"
                     , requestBody = RequestBodyLBS body
                     , requestHeaders = [("Content-Type", "application/json")]
@@ -155,25 +180,35 @@ detokenize url input = do
       liftIO $ hPutStrLn stderr $ "Failed to decode Llama response, got: " ++ (show $ responseBody response)
       return Nothing
 
+-- |Extremely basic interface
 llama :: URL -> Text -> IO (Maybe Text)
 llama url input = do
   manager <- liftIO $ newManager tlsManagerSettings { managerResponseTimeout = responseTimeoutNone }
   sendToLlama url manager input
 
+-- |Uses `applyTemplate` before sending the completion request
 llamaTemplated :: URL -> LlamaApplyTemplateRequest -> IO (Maybe Text)
-llamaTemplated url input = do
+llamaTemplated url input = llamaTemplatedRequest url input def
+
+-- |Make sure to use the same model in both `LlamaApplyTemplateRequest` and `LlamaRequest`
+llamaTemplatedRequest :: URL -> LlamaApplyTemplateRequest -> LlamaRequest -> IO (Maybe Text)
+llamaTemplatedRequest url input lreq = do
   manager <- liftIO $ newManager tlsManagerSettings { managerResponseTimeout = responseTimeoutNone }
   res <- applyTemplate url manager input
   case res of
-    Just text -> sendToLlama url manager text
+    Just text -> sendToLlamaRequest url manager lreq { prompt = text }
     _ -> pure Nothing
 
 llamaTemplatedStreaming :: (MonadThrow m, MonadResource m) => URL -> LlamaApplyTemplateRequest -> IO (ConduitT () LlamaStreamingResponse m ())
-llamaTemplatedStreaming url input = do
+llamaTemplatedStreaming url input = llamaTemplatedStreamingRequest url input def
+
+-- |Make sure to use the same model in both `LlamaApplyTemplateRequest` and `LlamaRequest`
+llamaTemplatedStreamingRequest :: (MonadThrow m, MonadResource m) => URL -> LlamaApplyTemplateRequest -> LlamaRequest -> IO (ConduitT () LlamaStreamingResponse m ())
+llamaTemplatedStreamingRequest url input lreq = do
   manager <- liftIO $ newManager tlsManagerSettings { managerResponseTimeout = responseTimeoutNone }
   res <- applyTemplate url manager input
   case res of
-    Just text -> sendToLlamaStreaming url manager text
+    Just text -> sendToLlamaStreamingRequest url manager lreq { prompt = text }
     _ -> pure $ yieldMany []
 
 health :: URL -> IO Health

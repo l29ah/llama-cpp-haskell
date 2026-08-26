@@ -36,6 +36,7 @@ common stuff
                     , http-types ^>= 0.12
                     , bytestring ^>= 0.12.2.0
                     , attoparsec ^>= 0.14.4
+                    , data-default >= 0.7 && < 0.9
 
 library
     import:           stuff
