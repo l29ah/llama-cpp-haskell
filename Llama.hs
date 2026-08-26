@@ -97,7 +97,7 @@ applyTemplateGeneral fetch url input = do
   case decode (responseBody response) of
     Just (LlamaApplyTemplateResponse text) -> return (Just text)
     Nothing -> do
-      liftIO $ hPutStrLn stderr "Failed to decode Llama response"
+      liftIO $ hPutStrLn stderr $ "Failed to decode Llama response, got: " ++ (show $ responseBody response)
       return Nothing
 
 -- Function to send a message to the Llama model
@@ -113,7 +113,7 @@ sendToLlama url manager input = do
   case decode (responseBody response) of
     Just (LlamaResponse text) -> return (Just text)
     Nothing -> do
-      liftIO $ hPutStrLn stderr "Failed to decode Llama response"
+      liftIO $ hPutStrLn stderr $ "Failed to decode Llama response, got: " ++ (show $ responseBody response)
       return Nothing
 
 sendToLlamaStreaming :: (MonadThrow m, MonadResource m) => URL -> Manager -> Text -> IO (ConduitT () LlamaStreamingResponse m ())
@@ -137,7 +137,7 @@ tokenize url input = do
   case decode (responseBody response) of
     Just (LlamaTokenizeResponse result) -> return (Just result)
     Nothing -> do
-      liftIO $ hPutStrLn stderr "Failed to decode Llama response"
+      liftIO $ hPutStrLn stderr $ "Failed to decode Llama response, got: " ++ (show $ responseBody response)
       return Nothing
 
 detokenize :: URL -> [Token] -> IO (Maybe Text)
@@ -152,7 +152,7 @@ detokenize url input = do
   case decode (responseBody response) of
     Just (LlamaDetokenizeResponse text) -> return (Just text)
     Nothing -> do
-      liftIO $ hPutStrLn stderr "Failed to decode Llama response"
+      liftIO $ hPutStrLn stderr $ "Failed to decode Llama response, got: " ++ (show $ responseBody response)
       return Nothing
 
 llama :: URL -> Text -> IO (Maybe Text)
