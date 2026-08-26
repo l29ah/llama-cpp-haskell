@@ -10,7 +10,7 @@ maintainer:         l29ah@riseup.net
 -- copyright:
 category:           Text, LLM, Llama, Machine Learning, AI, Network, CLI
 build-type:         Simple
-tested-with:        GHC == 9.12.2
+tested-with:        GHC == 9.12.3
 -- extra-source-files:
 
 Source-repository head
