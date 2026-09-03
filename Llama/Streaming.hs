@@ -58,7 +58,7 @@ data ServerEvent = ServerEvent
   { eventComment :: ByteString
   } | RetryEvent
   { eventRetry :: Int
-  } | CloseEvent
+  } | DispatchEvent
   deriving (Show)
 
 data LlamaStreamingResponse = LlamaStreamingResponse
@@ -79,19 +79,22 @@ parseEventJSON _ = Nothing
 
 -- |text/event-stream parser
 event :: Parser ServerEvent
-event = (sevent <|> comment <|> retry) <* eol
+event = (sevent <|> comment <|> retry <|> dispatch) <* eol
 
 sevent :: Parser ServerEvent
 sevent = ServerEvent
   <$> optional (string "event" *> char ':' *> chars <* eol)
   <*> optional (string "id"    *> char ':' *> chars <* eol)
-  <*> many     (string "data"  *> char ':' *> chars <* eol)
+  <*> many1    (string "data"  *> char ':' *> chars <* eol) -- technically SSE can have no data, but it is not the case for llama-server
 
 comment :: Parser ServerEvent
 comment = CommentEvent <$> (char ':' *> chars <* eol)
 
 retry :: Parser ServerEvent
 retry = RetryEvent <$> (string "retry:" *> decimal <* eol)
+
+dispatch :: Parser ServerEvent
+dispatch = pure DispatchEvent
 
 chars :: Parser ByteString
 chars = AC8.takeTill (== '\n')
