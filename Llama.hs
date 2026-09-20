@@ -199,7 +199,7 @@ llama url input = do
 
 -- |Uses `applyTemplate` before sending the completion request
 llamaTemplated :: URL -> LlamaApplyTemplateRequest -> IO (Maybe Text)
-llamaTemplated url input = llamaTemplatedRequest url input def
+llamaTemplated url input@LlamaApplyTemplateRequest{ model = inputModel } = llamaTemplatedRequest url input def { model = inputModel }
 
 -- |Make sure to use the same model in both `LlamaApplyTemplateRequest` and `LlamaRequest`
 llamaTemplatedRequest :: URL -> LlamaApplyTemplateRequest -> LlamaRequest -> IO (Maybe Text)
